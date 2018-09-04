@@ -37,7 +37,7 @@ public:
     ORBextractor(int nFeatures, float scaleFactor, int nlevels, int iniThFAST, int minThFAST);
 
     // 输入一幅图像，提取它上面的关键点并计算所有关键点的ORB特征保存在descriptors中
-    void operator()(cv::InputArray image, std::vector<cv::KeyPoint> &keypoints, cv::OutputArray descriptors);
+    void operator()(cv::InputArray image, std::vector<cv::KeyPoint> &keypoints, Eigen::Matrix<uchar, Eigen::Dynamic, 32> descriptors);
 
 private:
     // 建立层数为8的图像金字塔，越往上该层图像的像素数越少
@@ -54,8 +54,7 @@ private:
     void ComputeKeypointDirection(std::vector<std::vector<cv::KeyPoint>> &vvKeypoints) const;
 
     // 计算该keypoint的ORB描述子, 并保存在行首地址为ptr的cv::Mat的对应行中, 一行32个字节，保存256个bit
-    static void ComputeOrbDescriptor(const cv::KeyPoint &kpt, const cv::Mat &image, const cv::Point2i *BRIEF_bit,
-                                     uchar* rowAdress);
+    static Eigen::Matrix<uchar, 1, 32> ComputeOrbDescriptor(const cv::KeyPoint &kpt, const cv::Mat &image, const cv::Point2i *BRIEF_bit);
 
     int nlevels;        // 建立多少层金字塔，代码中为８
     std::vector<cv::Mat> imagePyramids;     //　size为8的vector，每一个元素对应金字塔每一层的图像
