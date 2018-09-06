@@ -6,6 +6,9 @@
 #include <opencv2/imgproc.hpp>
 #include <opencv2/features2d/features2d.hpp>
 #include <iostream>
+#include <opencv/cv.hpp>
+#include <fstream>
+#include <bitset>
 
 #include "ORBextractor.h"
 
@@ -280,21 +283,25 @@ static int BRIEF_bit[256*4] =
 
 namespace ORB_SLAM
 {
+unsigned int Block::numBlock = 0;
+
 Block::Block():bNoMore(false)
 {
-
+    id = numBlock++;
 }
 
 void Block::DivideBlock(Block &block1, Block &block2, Block &block3, Block &block4)
 {
-    const int halfX = (UR.x() - UL.x()) / 2;  // todo:: ceil(static_cast<float>(UR.x-UL.x)/2);
-    const int halfY = (BL.y() - BL.x()) / 2;
+    const int halfX = ceil(double(UR.x() - UL.x()) / 2);
+    const int halfY = ceil(double(BL.y() - UL.y()) / 2);
+//    const int halfX = (UR.x() - UL.x()) / 2;
+//    const int halfY = (BL.y() - UL.y()) / 2;
 
     // Step1: 确定四个子四叉树的四个边界点
     block1.UL = UL;
-    block1.UR = Eigen::Vector2i(UL.x() + halfX, UL.y());
-    block1.BL = Eigen::Vector2i(UL.x(), UL.y() + halfY);
-    block1.BR = Eigen::Vector2i(UL.x() + halfX, UL.y() + halfY);
+    block1.UR = Eigen::Vector2i(UL.x()+halfX, UL.y());
+    block1.BL = Eigen::Vector2i(UL.x(), UL.y()+halfY);
+    block1.BR = Eigen::Vector2i(UL.x()+halfX, UL.y()+halfY);
 
     block2.UL = block1.UR;
     block2.UR = UR;
@@ -323,9 +330,9 @@ void Block::DivideBlock(Block &block1, Block &block2, Block &block3, Block &bloc
         int x = pt.pt.x;
         int y = pt.pt.y;
 
-        if (x < UL.x() + halfX)
+        if (x < block1.UR.x())
         {
-            if (y < UL.y() + halfY)
+            if (y < block1.BR.y())
             {
                 block1.keypoints.push_back(pt);
             }
@@ -336,7 +343,7 @@ void Block::DivideBlock(Block &block1, Block &block2, Block &block3, Block &bloc
         }
         else
         {
-            if (y < UL.y() + halfY)
+            if (y < block1.BR.y())
             {
                 block2.keypoints.push_back(pt);
             }
@@ -347,19 +354,19 @@ void Block::DivideBlock(Block &block1, Block &block2, Block &block3, Block &bloc
         }
     }
 
-    if (block1.keypoints.size() < 2)
+    if (block1.keypoints.size() == 1)
     {
         block1.bNoMore = true;
     }
-    if (block2.keypoints.size() < 2)
+    if (block2.keypoints.size() == 1)
     {
         block2.bNoMore = true;
     }
-    if (block3.keypoints.size() < 2)
+    if (block3.keypoints.size() == 1)
     {
         block3.bNoMore = true;
     }
-    if (block4.keypoints.size() < 2)
+    if (block4.keypoints.size() == 1)
     {
         block4.bNoMore = true;
     }
@@ -390,7 +397,7 @@ static float IC_Angel(const cv::Mat &image, const cv::KeyPoint &kpt, const std::
         for (int u = -nPixel; u <= nPixel; ++u)
         {
             m10 += *(ptr + v * step0 + u) * u;  // 前面是以灰度作为权重，后面是该点的x坐标
-            m01 += *(ptr + v * step0 + u) * u;  // 前面是以灰度作为权重，后面是该点的y坐标
+            m01 += *(ptr + v * step0 + u) * v;  // 前面是以灰度作为权重，后面是该点的y坐标
         }
     }
 
@@ -419,14 +426,24 @@ nFeatures(_nFeatures), scaleFactor(_scaleFactor), nlevels(_nlevels), iniThFAST(_
 
     // Step2: 计算在每一层金字塔上理论上应该提取多少个关键点，越往上图像的像素数越少，提取的特征点应该越少
     nFeaturesPerLevel.resize(nlevels);
-    float s = 1.0/scaleFactor;
-    nFeaturesPerLevel[0] = nFeatures * (1 - s) / (1 - pow(s, nlevels)) ; // 等比数列求和, nFeatures = n0 * (1-s)/(1-s^n), n0是金字塔最底层应该提取的keypoint的数目
-    int sumFeatures = nFeaturesPerLevel[0];
+    float s = 1.0f/scaleFactor;
 
-    for (int i = 1; i < nlevels-1; ++i)
+//    nFeaturesPerLevel[0] = nFeatures * (1 - s) / (1 - (float)pow((double)s, (double)nlevels)); // 等比数列求和, nFeatures = n0 * (1-s)/(1-s^n), n0是金字塔最底层应该提取的keypoint的数目
+//    int sumFeatures = nFeaturesPerLevel[0];
+
+//    for (int i = 1; i < nlevels-1; ++i)
+//    {
+//        nFeaturesPerLevel[i] = nFeaturesPerLevel[0] * invScaleFactors[i];
+//        sumFeatures += nFeaturesPerLevel[i];
+//    }
+
+    float maxNum = nFeatures * (1 - s) / (1 - (float)pow((double)s, (double)nlevels));
+    int sumFeatures = 0;
+    for (int i = 0; i < nlevels-1; ++i)
     {
-        nFeaturesPerLevel[i] = nFeaturesPerLevel[0] * invScaleFactors[i];
+        nFeaturesPerLevel[i] = cvRound(maxNum);
         sumFeatures += nFeaturesPerLevel[i];
+        maxNum *= s;
     }
 
     nFeaturesPerLevel[nlevels-1] = std::max(nFeatures - sumFeatures, 0); // nFeatures = 1000时，第一层应该有217个点，每往上一层乘以0.8，最顶层用来兜底，应该有60个点
@@ -444,7 +461,7 @@ nFeatures(_nFeatures), scaleFactor(_scaleFactor), nlevels(_nlevels), iniThFAST(_
 
     for (int i = 0; i <= v45 ; ++i)
     {
-        nPixelPerRow[i] = int(std::sqrt(R2 - i*i));
+        nPixelPerRow[i] = std::round(std::sqrt(R2 - i*i));
     }
 
     // step4.2: 再算45°对角线以上的部分，其实不用算，因为它必须是个对称的，所以横着有几行，竖着就有几列
@@ -465,16 +482,34 @@ void ORBextractor::ConstructPyramid(const cv::Mat &image)
     // todo:: cv::Mat 的浅复制与深复制
     imagePyramids[0] = image.clone();
 
+
     int ncols = image.cols;
     int nrows = image.rows;
 
     // Step1: 对于每一层图像，根据其缩放因子resize图像大小
-    for (int i = 1; i < nlevels; ++i)
+    for (int i = 0; i < nlevels; ++i)
     {
         float scale = invScaleFactors[i];
-        cv::Size sz(int(ncols*scale), int(nrows*scale));
-        cv::resize(image, imagePyramids[i], sz, 0, 0, cv::INTER_LINEAR);
+        cv::Size sz(cvRound(ncols*scale), cvRound(nrows*scale));
+        cv::Size wholeSize(sz.width + (IMAGE_MARGIN+3)*2, sz.height + (IMAGE_MARGIN+3)*2);
+        cv::Mat temp(wholeSize, image.type());
+        imagePyramids[i] = temp(cv::Rect(IMAGE_MARGIN+3, IMAGE_MARGIN+3, sz.width, sz.height));
+
+        if(i != 0)
+        {
+            resize(imagePyramids[i-1], imagePyramids[i], sz, 0, 0, cv::INTER_LINEAR);
+
+            copyMakeBorder(imagePyramids[i], temp, IMAGE_MARGIN+3, IMAGE_MARGIN+3, IMAGE_MARGIN+3, IMAGE_MARGIN+3,
+                           cv::BORDER_REFLECT_101+cv::BORDER_ISOLATED);
+        }
+        else
+        {
+            copyMakeBorder(image, temp, IMAGE_MARGIN+3, IMAGE_MARGIN+3, IMAGE_MARGIN+3, IMAGE_MARGIN+3,
+                           cv::BORDER_REFLECT_101);
+        }
+//        cv::resize(image, imagePyramids[i], sz, 0, 0, cv::INTER_LINEAR);
     }
+
 
     // Step2: 给所有的图像加上边缘，便于求FAST角点时对边缘线3像素以内的点也能进行计算
     //        边缘margin以内的19个像素就不参与提取特征点了
@@ -495,8 +530,10 @@ void ORBextractor::ExtractKeypoint(std::vector<std::vector<cv::KeyPoint>> &vvKey
     {
         // Step1: 上下左右都往里收缩19个像素，裁剪出ROI区域,并将ROI区域在横竖方向上划分为多个网格,以及确定每个cell的size
         const cv::Mat image = imagePyramids[level];
-        const int ROIwidth = image.cols - 2*IMAGE_MARGIN ;
-        const int ROIheight = image.rows - 2*IMAGE_MARGIN;
+//        const int ROIwidth = image.cols - 2*IMAGE_MARGIN ;
+//        const int ROIheight = image.rows - 2*IMAGE_MARGIN;
+        const float ROIwidth = image.cols - 2*IMAGE_MARGIN ;
+        const float ROIheight = image.rows - 2*IMAGE_MARGIN;
         const int minROIX = IMAGE_MARGIN;
         const int minROIY = IMAGE_MARGIN;
         const int maxROIX = image.cols - IMAGE_MARGIN;
@@ -507,8 +544,10 @@ void ORBextractor::ExtractKeypoint(std::vector<std::vector<cv::KeyPoint>> &vvKey
         // 检测出keypoint后还会删除一些，并不是所有的keypoint最终都会成为ORB特征点
         kptsToDistribute.reserve(10*nFeatures);
 
-        const int nCols = floor(double(ROIwidth) / double(cellSize));      // 在横轴方向，应该有nCols个cell
-        const int nRows = floor(double(ROIheight) / double(cellSize));     // 在纵轴方向，应该有nRows个cell
+//        const int nCols = floor(double(ROIwidth) / double(cellSize));      // 在横轴方向，应该有nCols个cell
+//        const int nRows = floor(double(ROIheight) / double(cellSize));     // 在纵轴方向，应该有nRows个cell
+        const int nCols = ROIwidth/cellSize;
+        const int nRows = ROIheight/cellSize;
 
         // note: 由于这里采用了ceil函数，所以每个cell的size比应该的size是要大半个像素左右的，这样会造成　
         //        nCols*xCellSize > ROIwidth，在下面的循环中应该注意
@@ -516,11 +555,21 @@ void ORBextractor::ExtractKeypoint(std::vector<std::vector<cv::KeyPoint>> &vvKey
         const int yCellSize = ceil(double(ROIheight) / double(nRows));  // 每个cell的纵轴方向的大小为yCellSize
 
         // Step2: 对每个cell都提取FAST角点，这样能保证在整张图上比较均匀的采集keypoint
+
         for (int i = 0; i < nRows; ++i)
         {
             const int minY = minROIY + i*yCellSize;
-            int maxY = minY + yCellSize;
+//            int maxY = minY + yCellSize;
+            int maxY = minY + yCellSize + 6;
 
+            if (minY > maxROIY-3)
+            {
+                continue;
+            }
+//            if (maxY+6 >= maxROIY)
+//            {
+//                maxY = maxROIY-6;
+//            }
             if (maxY >= maxROIY)
             {
                 maxY = maxROIY;
@@ -529,8 +578,16 @@ void ORBextractor::ExtractKeypoint(std::vector<std::vector<cv::KeyPoint>> &vvKey
             for (int j = 0; j < nCols; ++j)
             {
                 const int minX = minROIX + j*xCellSize;
-                int maxX = minX + xCellSize;
+                int maxX = minX + xCellSize + 6;
 
+                if (minX > maxROIX-6)
+                {
+                    continue;
+                }
+//                if (maxX+6 >= maxROIX)
+//                {
+//                    maxX = maxROIX-6;
+//                }
                 if (maxX >= maxROIX)
                 {
                     maxX = maxROIX;
@@ -539,23 +596,26 @@ void ORBextractor::ExtractKeypoint(std::vector<std::vector<cv::KeyPoint>> &vvKey
                 std::vector<cv::KeyPoint> keypoints;
                 // 因为colRange()和rowRange()都是左闭右开的，所以需要加一
 //                cv::FAST(image.rowRange(minY-3, maxY+4).colRange(minX-3, maxX+4), keypoints, iniThFAST, true);
-                cv::FAST(image.rowRange(minY, maxY+6).colRange(minX, maxX+6), keypoints, iniThFAST, true);
+//                cv::FAST(image.rowRange(minY, maxY+6).colRange(minX, maxX+6), keypoints, iniThFAST, true);
+                cv::FAST(image.rowRange(minY, maxY).colRange(minX, maxX), keypoints, iniThFAST, true);
 
                 // 如果在这个cell内提不到点，那么就适当放宽FAST角点的限制，从连续20个点变为连续7个点
                 if (keypoints.empty())
                 {
 //                    cv::FAST(image.rowRange(minY-3, maxY+4).colRange(minX-3, maxX+4), keypoints, minThFAST, true);
-                    cv::FAST(image.rowRange(minY, maxY+6).colRange(minX, maxX+6), keypoints, minThFAST, true);
+//                    cv::FAST(image.rowRange(minY, maxY+6).colRange(minX, maxX+6), keypoints, minThFAST, true);
+                    cv::FAST(image.rowRange(minY, maxY).colRange(minX, maxX), keypoints, minThFAST, true);
                 }
 
-//                cout << "keypoint.size() = " << keypoints.size() << endl;
                 if (!keypoints.empty())
                 {
                     for (cv::KeyPoint &kpt: keypoints)
                     {
                         // FAST函数返回的坐标是相对于点（minX-3, minY-3)的
-                        kpt.pt.x += minX-3;
-                        kpt.pt.y += minY-3;
+                        kpt.pt.x += j*xCellSize;
+                        kpt.pt.y += i*yCellSize;
+//                        kpt.pt.x += minX-3;
+//                        kpt.pt.y += minY-3;
                         kptsToDistribute.push_back(kpt);
                     }
                 }
@@ -563,24 +623,23 @@ void ORBextractor::ExtractKeypoint(std::vector<std::vector<cv::KeyPoint>> &vvKey
         }
 
         // Step3: 所有的cell中提取到的特征点，用四叉树的形式一层一层地分割，保证最后得到的keypoint在整张图上分布得比较均匀
-//        cout << "distribute step3 start 583" << endl;
         vvKeypoints[level] = DistributeKpts(kptsToDistribute, minROIX, maxROIX, minROIY, maxROIY, nFeaturesPerLevel[level]);
 //        vvKeypoints[level] = kptsToDistribute;
-//        cout << "step3 finished 585" << endl;
 
         for (cv::KeyPoint &kpt: vvKeypoints[level])
         {
+            kpt.pt.x+=minROIX;
+            kpt.pt.y+=minROIY;
             kpt.octave = level;  // 表示这个keypoint是在第几层金字塔上提取出来的
         }
     }
+
 }
 
 std::vector<cv::KeyPoint> ORBextractor::DistributeKpts(const std::vector<cv::KeyPoint> &keypoints,
                                         int minX, int maxX, int minY, int maxY,int nFeatures) const
 {
     // Step0: 输入数据检查
-    int n = keypoints.size();
-    cout << "total n = " << n << endl;
     if (keypoints.empty())
     {
         std::vector<cv::KeyPoint> temp;
@@ -598,11 +657,23 @@ std::vector<cv::KeyPoint> ORBextractor::DistributeKpts(const std::vector<cv::Key
 
     // Step1: 将整个ROI区域设为初始block并填写其所有的成员变量
     Block block0;  // 一般图像长和宽差不多，初始时只有一个块
-    block0.UL = Eigen::Vector2i(minX, minY);
-    block0.UR = Eigen::Vector2i(maxX, minY);
-    block0.BL = Eigen::Vector2i(minX, maxY);
-    block0.BR = Eigen::Vector2i(maxX, maxY);
+//    block0.UL = Eigen::Vector2i(minX, minY);
+//    block0.UR = Eigen::Vector2i(maxX, minY);
+//    block0.BL = Eigen::Vector2i(minX, maxY);
+//    block0.BR = Eigen::Vector2i(maxX, maxY);
+    block0.UL = Eigen::Vector2i(0, 0);
+    block0.UR = Eigen::Vector2i(maxX-minX, 0);
+    block0.BL = Eigen::Vector2i(block0.UL.x(), maxY-minY);
+    block0.BR = Eigen::Vector2i(block0.UR.x(), maxY-minY);
     block0.keypoints.assign(keypoints.begin(), keypoints.end());
+
+//    cv::Mat image = iniImage.clone();
+//    for (auto kpt: block0.keypoints)
+//    {
+//        cv::circle(image, kpt.pt, 2, cv::Scalar(0,0,255));
+//    }
+//    cv::imshow("block", image.colRange(block0.UL.x(), block0.UR.x()).rowRange(block0.UL.y(), block0.BL.y()));
+//    cv::waitKey();
 
     if (block0.keypoints.size() == 1)
     {
@@ -620,7 +691,7 @@ std::vector<cv::KeyPoint> ORBextractor::DistributeKpts(const std::vector<cv::Key
     {
         int nToDivede = 0;
         int nBlocksIni = 0;
-        std::vector<std::pair<int, Block*>> vBlocksToDivide;
+        std::vector<std::pair<int, unsigned int>> vBlocksToDivide;
 
         // Step2.1: 第一轮分裂，把list中现有的blocks分裂完，记得一个block分裂后就该把它从list中erase掉
         for (std::list<Block>::iterator it = lBlocks.begin(); it != lBlocks.end();)
@@ -650,19 +721,26 @@ std::vector<cv::KeyPoint> ORBextractor::DistributeKpts(const std::vector<cv::Key
                     continue;
                 }
 
+//                cv::Mat image = iniImage.clone();
+//                for (auto kpt: pBlock->keypoints)
+//                {
+//                    cv::circle(image, kpt.pt, 2, cv::Scalar(0,0,255));
+//                }
+//                cv::imshow("block", image);
+//                cv::waitKey();
+
                 // 注意这里是深拷贝，也就是push_front的是一个新的对象，此时lBlocks.front()
                 // 与*pBlock两个对象虽然包含的成员变量的值都相同，但它们是不同的Block对象，
                 // 存储在不同的位置，此后再操作也只能是操作lBlocks.front()，因为*pBlock是
                 // 一个临时变量，可能下一轮循环时就已经被销毁了
                 lBlocks.push_front(*pBlock);
-                cout << "block0 size is " << pBlock->keypoints.size() << endl;
                 lBlocks.front().position = lBlocks.begin();
 
                 // 如果这个子block还有继续分裂的可能，那么很大概率它会1变4，总的block数翻3倍
                 if (!pBlock->bNoMore)
                 {
                     nToDivede++;
-                    vBlocksToDivide.push_back(std::make_pair(pBlock->keypoints.size(), &lBlocks.front()));
+                    vBlocksToDivide.push_back(std::make_pair(pBlock->keypoints.size(), lBlocks.front().id));
                 }
             }
 
@@ -675,31 +753,41 @@ std::vector<cv::KeyPoint> ORBextractor::DistributeKpts(const std::vector<cv::Key
         //                    已经分裂不动了,这个时候也要停了
         if (lBlocks.size() >= nFeatures || lBlocks.size() == nBlocksIni)
         {
-            cout << "break first loop" << endl;
             break;
         }
+
 
         // Step2.2: 第二波分裂,如果分裂即将进入尾声(把刚才分出的几个包含keypoint较多的字块再分一下,有可能使得
         //          总block数达到nfeatures),那么此时采取精英原则,就按照包含keypoints数从多到少的顺序分裂这些子块,
         //          这是遵循keypoint密集的地方优先分裂的原则,毕竟keypoint多的地方也应该最终取
         //          较多的block块生成较多的keypointDistributed
-        cout << "lBlock.size = " << lBlocks.size() << ", nToDivide = " << nToDivede << endl;
         if (lBlocks.size() + 3*nToDivede > nFeatures)
         {
-            cout << "lBlock.size() = " << lBlocks.size() << ", nToDivide = " << nToDivede << endl;
+            Block block5 = *lBlocks.front().position;
+
             while (!bFinish)
             {
+                // 建立一个id到指针的查询表
+                std::map<unsigned int, Block*> BlockQueryTable;
+                for (Block &block: lBlocks)
+                {
+                    BlockQueryTable[block.id] = &block;
+                }
+
                 int nBlocksIni2 = lBlocks.size();
-                std::vector<std::pair<int, Block*>> vBlocksToDivide2 = vBlocksToDivide;
+                std::vector<std::pair<int, unsigned int>> vBlocksToDivide2 = vBlocksToDivide;
                 vBlocksToDivide.clear();
-                std::sort(vBlocksToDivide2.begin(), vBlocksToDivide2.end(), std::greater<std::pair<int, Block*>>());
+//                std::sort(vBlocksToDivide2.begin(), vBlocksToDivide2.end(), std::greater<std::pair<int, Block*>>());
+                std::sort(vBlocksToDivide2.begin(), vBlocksToDivide2.end());
 
                 int itpIntBlock = 0;
-                for (const std::pair<int, Block*> &pIntBlock: vBlocksToDivide2)
+                for (int j = vBlocksToDivide2.size()-1;j >= 0;j--)
+//                for (const std::pair<int, Block*> &Numpt_Block: vBlocksToDivide2)
                 {
+                    std::pair<int, unsigned int> Numpt_Block = vBlocksToDivide2[j];
                     itpIntBlock++;
                     Block block1, block2, block3, block4;
-                    pIntBlock.second->DivideBlock(block1, block2, block3, block4);
+                    BlockQueryTable[Numpt_Block.second]->DivideBlock(block1, block2, block3, block4);
                     std::vector<Block*> blocks;
                     blocks.reserve(4);
                     blocks.push_back(&block1);
@@ -719,12 +807,12 @@ std::vector<cv::KeyPoint> ORBextractor::DistributeKpts(const std::vector<cv::Key
 
                         if (!pBlock->bNoMore)
                         {
-                            vBlocksToDivide.push_back(std::make_pair(pBlock->keypoints.size(), &lBlocks.front()));
+                            vBlocksToDivide.push_back(std::make_pair(pBlock->keypoints.size(), lBlocks.front().id));
                         }
                     }
 
                     // Process2: 老的block从list中去除掉
-                    lBlocks.erase(pIntBlock.second->position);
+                    lBlocks.erase(BlockQueryTable[Numpt_Block.second]->position);
 
                     if(lBlocks.size() >= nFeatures)
                     {
@@ -734,7 +822,6 @@ std::vector<cv::KeyPoint> ORBextractor::DistributeKpts(const std::vector<cv::Key
 
                 // terminal condition: 在这里也把第二个条件加进来，因为的确可能这张图就提不到nFeatures个keypoint，
                 //                     这个时候再分裂也没有意义，你还不让他停？
-//                cout << "in the second loop, lBlocks.size() = " << lBlocks.size() << endl;
                 if (lBlocks.size() >= nFeatures || lBlocks.size() == nBlocksIni2)
                 {
                     bFinish = true;
@@ -742,6 +829,7 @@ std::vector<cv::KeyPoint> ORBextractor::DistributeKpts(const std::vector<cv::Key
 
             }
         }
+
     }
 
     // Step3: 从list中的每个block中挑选出respond最大的那个keypoint保留下来
@@ -764,8 +852,6 @@ std::vector<cv::KeyPoint> ORBextractor::DistributeKpts(const std::vector<cv::Key
         vkptsDistributed.push_back(keypoints[maxId]);
     }
 
-//    cout << "finish the keypoints assignment" << endl;
-
     return vkptsDistributed;
 }
 
@@ -785,7 +871,7 @@ void ORBextractor::ComputeKeypointDirection(std::vector<std::vector<cv::KeyPoint
 Eigen::Matrix<uchar, 1, 32> ORBextractor::ComputeOrbDescriptor(const cv::KeyPoint &kpt, const cv::Mat &image, const cv::Point2i *BRIEF_bit)
 {
     int step0 = image.step[0];
-    double theta = kpt.angle * M_PI / 360;
+    double theta = kpt.angle * float(M_PI / 180.f);
     float a = std::sin(theta);
     float b = std::cos(theta);
     uchar* ptr = image.data + int(kpt.pt.y)*step0 + int(kpt.pt.x);  // OpenCV为啥非要定义kpt.pt为Point2f类型？
@@ -793,8 +879,8 @@ Eigen::Matrix<uchar, 1, 32> ORBextractor::ComputeOrbDescriptor(const cv::KeyPoin
     auto Intensity = [&](int id)     // 这里按引用传递而不是按值传递，因为接下来我们会改变BRIEF_bit的值
     {
         cv::Point2i pt = *(BRIEF_bit + id);   // BRIEF描述子中的一个采样点
-        int u = int(pt.x * b - pt.y * a);     // 旋转后的坐标系下的坐标变换到旋转之前, Xw = Twc*Xc;
-        int v = int(pt.x * a + pt.y * b);
+        int u = std::round(pt.x * b - pt.y * a);     // 旋转后的坐标系下的坐标变换到旋转之前, Xw = Twc*Xc;
+        int v = std::round(pt.x * a + pt.y * b);
         return *(ptr + v*step0 + u);
     };
 
@@ -818,7 +904,7 @@ Eigen::Matrix<uchar, 1, 32> ORBextractor::ComputeOrbDescriptor(const cv::KeyPoin
 }
 
 // InputArray 和 OutputArray自带引用&，不信你按住ctrl点过去看, 而且InputArray还是常引用，不允许修改
-void ORBextractor::operator()(cv::InputArray _image, std::vector<cv::KeyPoint>& keypoints, Eigen::Matrix<uchar, Eigen::Dynamic, 32> descriptors)
+void ORBextractor::operator()(cv::InputArray _image, std::vector<cv::KeyPoint>& keypoints, Eigen::Matrix<uchar, Eigen::Dynamic, 32> &descriptors)
 {
     cv::Mat image = _image.getMat();
     cv::cvtColor(image, image, cv::COLOR_BGR2GRAY);
@@ -826,16 +912,13 @@ void ORBextractor::operator()(cv::InputArray _image, std::vector<cv::KeyPoint>& 
 
     // Step1: 建立图像金字塔，按照0.8的系数依次resize出来8层
     ConstructPyramid(image);
-    cout << "step1 end 839" << endl;
 
     // Step2: 在所有层上提取关键点，也就是keypoint保存在vector<<vector>>中，第一个vector表示金字塔的层，第二个表示一层上的keypoints
     std::vector<std::vector<cv::KeyPoint>> vvKeypoints;
     ExtractKeypoint(vvKeypoints);
-    cout << "step2 end 844" << endl;
 
     // Step3: 在所有层上用灰度质心法计算关键点的方向，便于后面计算BRIEF特征时建立局部坐标系
     ComputeKeypointDirection(vvKeypoints);
-    cout << "step3 end 848" << endl;
 
     // Step4: 计算所有层上提取出的keypoints的ORB特征
     // step4.1: 首先统计总共有多少个keypoints,　便于初始化keypoints和descriptor
@@ -861,7 +944,7 @@ void ORBextractor::operator()(cv::InputArray _image, std::vector<cv::KeyPoint>& 
 
     // step4.2: 在每一层上计算keypoint的ORB特征
     int offset = 0;  // descriptors已经记录了多少个keypoint了
-    for (int level = 0; level < nlevels; ++level)
+    for (int level = 0; level < nlevels; ++level)  // todo:: here change to nlevel
     {
         std::vector<cv::KeyPoint> vKeypoints = vvKeypoints[level];  // 该层上提取出的所有的keypoints，声明引用是为了节省存储空间
         int nKeypointsLevel = vKeypoints.size();  // 这一层图像总共提取出了多少个keypoints
@@ -896,17 +979,15 @@ void ORBextractor::operator()(cv::InputArray _image, std::vector<cv::KeyPoint>& 
         keypoints.insert(keypoints.end(), vKeypoints.begin(), vKeypoints.end());
     }
 
-    cout << "step4 end 913" << endl;
-
-//    for (int i = 0; i < descriptors.rows(); ++i)
-//    {
-//        for (int j = 0; j < descriptors.cols(); ++j)
-//        {
-//            cout << (uint)descriptors(i,j) << " ";
-//        }
-//
-//        cout << endl;
-//    }
-//    cout << descriptors << endl;
+    std::ofstream fout1("LightolPt.txt", std::ios::app);
+    for (int i = 0; i < descriptors.rows(); ++i)
+    {
+        for (int j = 0; j < descriptors.cols(); ++j)
+        {
+            fout1 << (int)descriptors(i,j) << " ";
+        }
+        fout1 << endl;
+    }
+    fout1.close();
 
 }

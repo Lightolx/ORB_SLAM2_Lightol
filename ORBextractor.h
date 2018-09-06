@@ -19,13 +19,14 @@ public:
 
     std::vector<cv::KeyPoint> keypoints;
     Eigen::Vector2i UL, UR, BL, BR;
+    static unsigned int numBlock;
+    unsigned int id;
 
     // 只包含一个keypoint，不能再分裂了
     bool bNoMore;  // 当然你会问包含零个的block怎么处理，很简单，一旦在集合中发现有这样的block马上把它删掉
 
     // Block对象生成后都会被放入到一个list中，在这里记录它在list中的位置
     std::list<Block>::iterator position;
-
 
 };
 }
@@ -37,7 +38,7 @@ public:
     ORBextractor(int nFeatures, float scaleFactor, int nlevels, int iniThFAST, int minThFAST);
 
     // 输入一幅图像，提取它上面的关键点并计算所有关键点的ORB特征保存在descriptors中
-    void operator()(cv::InputArray image, std::vector<cv::KeyPoint> &keypoints, Eigen::Matrix<uchar, Eigen::Dynamic, 32> descriptors);
+    void operator()(cv::InputArray image, std::vector<cv::KeyPoint> &keypoints, Eigen::Matrix<uchar, Eigen::Dynamic, 32> &descriptors);
 
 private:
     // 建立层数为8的图像金字塔，越往上该层图像的像素数越少
