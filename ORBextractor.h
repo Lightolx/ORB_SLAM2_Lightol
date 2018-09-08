@@ -35,9 +35,12 @@ class ORBextractor
 {
 
 public:
+
+    ORBextractor() {}
+
     ORBextractor(int nFeatures, float scaleFactor, int nlevels, int iniThFAST, int minThFAST);
 
-    // 输入一幅图像，提取它上面的关键点并计算所有关键点的ORB特征保存在descriptors中
+    // 输入一幅图像，提取它上面的关键点并计算所有keypoint的ORB特征保存在descriptors中
     void operator()(cv::InputArray image, std::vector<cv::KeyPoint> &keypoints, Eigen::Matrix<uchar, Eigen::Dynamic, 32> &descriptors);
 
 private:
@@ -57,7 +60,7 @@ private:
     // 计算该keypoint的ORB描述子, 并保存在行首地址为ptr的cv::Mat的对应行中, 一行32个字节，保存256个bit
     static Eigen::Matrix<uchar, 1, 32> ComputeOrbDescriptor(const cv::KeyPoint &kpt, const cv::Mat &image, const cv::Point2i *BRIEF_bit);
 
-    int nlevels;        // 建立多少层金字塔，代码中为８
+    int nlevels;        // 建立多少层金字塔，代码中为8
     std::vector<cv::Mat> imagePyramids;     //　size为8的vector，每一个元素对应金字塔每一层的图像
 
     int nFeatures;      // 8层图像加起来，总共想提取多少个keypoint
@@ -72,7 +75,7 @@ private:
     std::vector<float> sigma2s;             // scaleFactors的平方，也是为了免得每次用到都要再算一遍
     std::vector<float> invsigma2s;          // sigma2s的倒数
 
-    std::vector<Eigen::Vector2i> BRIEFs;  // BRIEF算子用于生成0或1 bit位的点对
+    std::vector<Eigen::Vector2i> BRIEFs;  // BRIEF算子,用于生成0或1 bit位的点对的坐标，连续的两个表示一对
 
     std::vector<int> nPixelPerRow;        // 计算一块patch的灰度质心时，每一行应该有多少个像素，这样patch恰好是个圆
 };
