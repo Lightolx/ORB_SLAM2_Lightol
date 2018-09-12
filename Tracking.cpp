@@ -2,6 +2,7 @@
 // Created by lightol on 18-9-7.
 //
 #include <iostream>
+#include <chrono>
 
 #include <opencv2/core/persistence.hpp>
 #include <opencv2/imgproc/types_c.h>
@@ -120,10 +121,15 @@ void Tracking::PreProcessImage(cv::Mat image)
 Eigen::Matrix4d Tracking::Run(const cv::Mat &image)
 {
     // Step1: 图像预处理，把输入的图片提取完特征点并保存成Frame对象
+    std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
     PreProcessImage(image);
-
+    std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
     // Step2: tracking流程的主函数，追踪该帧的位置并建图
     track();
+    std::chrono::steady_clock::time_point t3 = std::chrono::steady_clock::now();
+
+//    cout << "preProcess = " << std::chrono::duration_cast<std::chrono::duration<double> >(t2 - t1).count() << endl;
+//    cout << "track = " << std::chrono::duration_cast<std::chrono::duration<double> >(t3 - t2).count() << endl;
 }
 
 void Tracking::MonoInitialize()
@@ -132,7 +138,7 @@ void Tracking::MonoInitialize()
     if (currentFrame.numKeypoints < 100)
     {
         initializer.bIniFrameCreated = false;  // 因为初始化要求必须是连续的两帧，所以第二帧不行，第一帧能提再多的keypoint也作废
-        initializer.frameCount = 0;
+//        initializer.frameCount = 0;
         return;
     }
 
@@ -146,24 +152,27 @@ void Tracking::MonoInitialize()
     }
 
     // Step2: 生成第二帧，必须要是初始帧的下一帧，而且能和初始帧找到100个匹配点，否则重新开始初始化过程
-//    if (++initializer.frameCount < 3)  // 隔一帧再与初始帧匹配，保证视差大一点
+//    if (++initializer.frameCount < 6)  // 隔一帧再与初始帧匹配，保证视差大一点
 //    {
 //        return;
 //    }
+    std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
     ORBmatcher OrbMatcher(0.9, true);
     std::map<int, int> matches;
-    int nMatches = OrbMatcher.FindMatchingPoints(initializer.initialFrame, currentFrame, 100, matches);
-
+    int nMatches = OrbMatcher.FindMatchingPoints(initializer.initialFrame, currentFrame, 10, matches);
+    std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
+//    cout << "findMatches = " << std::chrono::duration_cast<std::chrono::duration<double> >(t2 - t1).count() << endl;
     if (nMatches < 100)  // 找不到足够的匹配点就重新开始初始化
     {
-        initializer.frameCount = 0;
+        initializer.initialFrame = currentFrame;
+//        initializer.frameCount = 0;
 
         return;
     }
     else
     {
         initializer.currentFrame = currentFrame;
-        cout << "Initialization beginning..." << endl;
+//        cout << "Initialization beginning..." << endl;
     }
 
     cv::Mat image1 = initializer.initialFrame.image;
@@ -213,14 +222,20 @@ void Tracking::MonoInitialize()
 
 
 //        cv::imshow("image3", image3);
-//        cv::waitKey();
+//        cv::waitKey(1000);
     }
 
 
     // Step3: 初始化流程开始，首先根据匹配点对计算当前帧相对与初始帧的pose
     Eigen::Matrix3d R;
     Eigen::Vector3d t;
-    std::vector<Eigen::Vector3d> vMapPoints;
-    initializer.ComputeRelativePose(matches, R, t, vMapPoints);
+    std::vector<Eigen::Vector3d> vMapPoints;       // 三角化出来的mapPoints
+    std::vector<std::pair<int, int>> MpMatches;    // 上面的mapPoints在两帧中对应的keypoint的ID
+    if (initializer.ComputeRelativePose(matches, R, t, vMapPoints, MpMatches))
+    {
+        cout << "initialization done" << endl << endl;
+        return;
+        // create initial map
+    }
     initializer = Initializer();
 }

@@ -18,7 +18,7 @@ Initializer::Initializer(int _maxIteration):bIniFrameCreated(false), maxIteratio
 
 }
 
-bool Initializer::ComputeRelativePose(const std::map<int, int> &_matches, Eigen::Matrix3d &R, Eigen::Vector3d &t, std::vector<Eigen::Vector3d> &vMapPoints)
+bool Initializer::ComputeRelativePose(const std::map<int, int> &_matches, Eigen::Matrix3d &R, Eigen::Vector3d &t, std::vector<Eigen::Vector3d> &vMapPoints, std::vector<std::pair<int, int>> &MpMatches)
 {
     // Step0: 把map转换成vector，便于等会按id索引其元素
     int nMatches = _matches.size();
@@ -77,7 +77,7 @@ bool Initializer::ComputeRelativePose(const std::map<int, int> &_matches, Eigen:
     threadF.join();
 
 //    cout << "final scoreF = " << scoreF << endl;
-    ReconstructF(F, R, t, vMapPoints);
+    return ReconstructF(F, R, t, vMapPoints, MpMatches);
 
 
     // Step3: 根据F与H两个模型的打分决定使用哪一个模型
@@ -345,7 +345,7 @@ double Initializer::EvaluateF(const Eigen::Matrix3d &F, std::vector<int> octaMat
     return sumScore;
 }
 
-bool Initializer::ReconstructF(const Eigen::Matrix3d &F, Eigen::Matrix3d &R, Eigen::Vector3d &t, std::vector<Eigen::Vector3d> &vMapPoints)
+bool Initializer::ReconstructF(const Eigen::Matrix3d &F, Eigen::Matrix3d &R, Eigen::Vector3d &t, std::vector<Eigen::Vector3d> &vMapPoints, std::vector<std::pair<int, int>> &MpMatches)
 {
     // Step1: 根据F矩阵求出E矩阵
     cv::Mat K = initialFrame.K;
@@ -366,11 +366,12 @@ bool Initializer::ReconstructF(const Eigen::Matrix3d &F, Eigen::Matrix3d &R, Eig
 
     // Step3: 从4种可能的R,t都重建一次，然后选择重建出可靠mapPoint最多的那对R,t
     std::vector<Eigen::Vector3d> mapPoints1, mapPoints2, mapPoints3, mapPoints4;
+    std::vector<std::pair<int, int>> validMatches1, validMatches2, validMatches3, validMatches4;
     double parallax1(0), parallax2(0), parallax3(0), parallax4(0);
-    int n1 = SelectRt(R1, t1, eigK, mapPoints1, parallax1);
-    int n2 = SelectRt(R1, -t1, eigK, mapPoints2, parallax2);
-    int n3 = SelectRt(R2, t1, eigK, mapPoints3, parallax3);
-    int n4 = SelectRt(R2, -t1, eigK, mapPoints4, parallax4);
+    int n1 = SelectRt(R1, t1, eigK, mapPoints1, validMatches1, parallax1);
+    int n2 = SelectRt(R1, -t1, eigK, mapPoints2, validMatches2, parallax2);
+    int n3 = SelectRt(R2, t1, eigK, mapPoints3, validMatches3, parallax3);
+    int n4 = SelectRt(R2, -t1, eigK, mapPoints4, validMatches4, parallax4);
 
     std::vector<int> vNumMapPoints(4, 0);
     vNumMapPoints[0] = n1;
@@ -390,13 +391,14 @@ bool Initializer::ReconstructF(const Eigen::Matrix3d &F, Eigen::Matrix3d &R, Eig
 
     if (n1 == vNumMapPoints[3])
     {
-        cout << "maxGood = " << n1 << "\nparallax = " << parallax1 << endl;
+        cout  << n1 << " " << parallax1 << endl;
 //        cout << "R is\n" << R1 << "\nt is " << t1.transpose() << endl;
-        if (parallax1 > 0.2)  // 视差要大于1°
+        if (parallax1 > 0.2)  // 原代码视差要大于1°，这里我初始化出来的只能大于0.2°
         {
             R = R1;
             t = t1;
             vMapPoints = mapPoints1;
+            MpMatches = validMatches1;
         }
         else
         {
@@ -405,13 +407,15 @@ bool Initializer::ReconstructF(const Eigen::Matrix3d &F, Eigen::Matrix3d &R, Eig
     }
     else if(n2 == vNumMapPoints[3])
     {
-        cout << "maxGood = " << n2 << "\nparallax = " << parallax2 << endl;
+        cout  << n2 << " " << parallax2 << endl;
+//        cout << "maxGood = " << n2 << "\nparallax = " << parallax2 << endl;
 //        cout << "R is\n" << R1 << "\nt is " << -t1.transpose()<< endl;
         if (parallax2 > 0.2)  // 视差要大于1°
         {
             R = R1;
             t = -t1;
             vMapPoints = mapPoints2;
+            MpMatches = validMatches2;
         }
         else
         {
@@ -420,13 +424,15 @@ bool Initializer::ReconstructF(const Eigen::Matrix3d &F, Eigen::Matrix3d &R, Eig
     }
     else if(n3 == vNumMapPoints[3])
     {
-        cout << "maxGood = " << n3 << "\nparallax = " << parallax3 << endl;
+        cout  << n3 << " " << parallax3 << endl;
+//        cout << "maxGood = " << n3 << "\nparallax = " << parallax3 << endl;
 //        cout << "R is\n" << R2 << "\nt is " << t1.transpose()<< endl;
         if (parallax3 > 0.2)  // 视差要大于1°
         {
             R = R2;
             t = t1;
             vMapPoints = mapPoints3;
+            MpMatches = validMatches3;
         }
         else
         {
@@ -435,13 +441,15 @@ bool Initializer::ReconstructF(const Eigen::Matrix3d &F, Eigen::Matrix3d &R, Eig
     }
     else if(n4 == vNumMapPoints[3])
     {
-        cout << "maxGood = " << n4 << "\nparallax = " << parallax4 << endl;
+        cout  << n4 << " " << parallax4 << endl;
+//        cout << "maxGood = " << n4 << "\nparallax = " << parallax4 << endl;
 //        cout << "R is\n" << R2 << "\nt is " << -t1.transpose()<< endl;
         if (parallax4 > 0.2)  // 视差要大于1°
         {
             R = R2;
             t = -t1;
             vMapPoints = mapPoints4;
+            MpMatches = validMatches4;
         }
         else
         {
@@ -476,9 +484,11 @@ void Initializer::SvdEssential(const Eigen::Matrix3d &E, Eigen::Matrix3d &R1, Ei
 }
 
 int Initializer::SelectRt(const Eigen::Matrix3d &R, const Eigen::Vector3d &t, const Eigen::Matrix3d &K,
-                          std::vector<Eigen::Vector3d> &mapPoints, double &parallax_) const
+                          std::vector<Eigen::Vector3d> &mapPoints, std::vector<std::pair<int, int>> &validMatches, double &parallax_) const
 {
     std::vector<double> vParallax;
+    mapPoints.clear();
+    validMatches.clear();
     for (int i = 0; i < matches.size(); ++i)
     {
         // Step1: 根据RANSAC确定出来的正确的匹配点对，三角化出相应的mapPoint
@@ -535,7 +545,10 @@ int Initializer::SelectRt(const Eigen::Matrix3d &R, const Eigen::Vector3d &t, co
 
         if (reError1 < 2 && reError2 < 2)   //　重投影误差小于两个像素
         {
+            float u1 = p1.x(); float v1 = p1.y();
+            float u2 = p2.x(); float v2 = p2.y();
             mapPoints.push_back(mapPoint);
+            validMatches.push_back(matches[i]);
             vParallax.push_back(parallax);
         }
     }

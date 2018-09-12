@@ -6,6 +6,7 @@
 #include <opencv2/imgcodecs/imgcodecs_c.h>
 #include <unistd.h>
 #include <opencv/cv.hpp>
+#include <fstream>
 
 #include "System.h"
 #include "ORBextractor.h"

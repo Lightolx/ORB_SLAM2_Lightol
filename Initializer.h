@@ -17,14 +17,14 @@ public:
     Initializer(int maxIterations = 200);
 
     // 根据ORBmatcher输出的匹配点对,计算当前帧相对于初始帧的pose
-    bool ComputeRelativePose(const std::map<int, int> &matches, Eigen::Matrix3d &R, Eigen::Vector3d &t, std::vector<Eigen::Vector3d> &vMapPoints);
+    bool ComputeRelativePose(const std::map<int, int> &matches, Eigen::Matrix3d &R, Eigen::Vector3d &t, std::vector<Eigen::Vector3d> &vMapPoints, std::vector<std::pair<int, int>> &MpMatches);
 
     void ComputeHomography(float &score, Eigen::Matrix3d &H) const;
     void ComputeFundamental(float &score, Eigen::Matrix3d &F);
 
-    bool ReconstructF(const Eigen::Matrix3d &F, Eigen::Matrix3d &R, Eigen::Vector3d &t, std::vector<Eigen::Vector3d> &vMapPoints);
+    bool ReconstructF(const Eigen::Matrix3d &F, Eigen::Matrix3d &R, Eigen::Vector3d &t, std::vector<Eigen::Vector3d> &vMapPoints, std::vector<std::pair<int, int>> &MpMatches);
     void SvdEssential(const Eigen::Matrix3d &E, Eigen::Matrix3d &R1, Eigen::Matrix3d &R2, Eigen::Vector3d &t) const;
-    int SelectRt(const Eigen::Matrix3d &R, const Eigen::Vector3d &t, const Eigen::Matrix3d &K, std::vector<Eigen::Vector3d> &mapPoints, double &parallax) const;
+    int SelectRt(const Eigen::Matrix3d &R, const Eigen::Vector3d &t, const Eigen::Matrix3d &K, std::vector<Eigen::Vector3d> &mapPoints, std::vector<std::pair<int, int>> &validMatches, double &parallax) const;
     Eigen::Vector3d triangulate(const Eigen::Vector2d &p1, const Eigen::Vector2d &p2, const Eigen::Matrix3d &R, const Eigen::Vector3d &t, const Eigen::Matrix3d &K) const;
 
     // 计算Frame2相对于Frame1的F矩阵
