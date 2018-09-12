@@ -31,7 +31,7 @@ int main(int argc, char **argv)
     std::map<int, int> matches;
     int nMatches = ORBmatcher::FindMatchingPoints(frame1, frame2, 50, matches);
 
-    cout << "nMatches is " << nMatches << endl;
+//    cout << "nMatches is " << nMatches << endl;
 
 
     int cols1 = image1.cols;

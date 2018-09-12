@@ -1,14 +1,17 @@
 //
 // Created by lightol on 18-9-7.
 //
+#include <iostream>
 
 #include <opencv2/core/persistence.hpp>
 #include <opencv2/imgproc/types_c.h>
 #include <opencv/cv.hpp>
 
 #include "Tracking.h"
-#include "Initializer.h"
 #include "ORBmatcher.h"
+
+using std::cout;
+using std::endl;
 
 Tracking::Tracking(const std::string &camSettingsFilepath):trackingState(NO_IMAGE_YET)
 {
@@ -42,11 +45,12 @@ Tracking::Tracking(const std::string &camSettingsFilepath):trackingState(NO_IMAG
     distortCoef = distortCoef1.clone();
 
     // step1.3: 相机帧数
-    fps = fSettings["Camera.fps"];
-    if (fps == 0)
-    {
-        fps = 30;
-    }
+//    fps = fSettings["Camera.fps"];
+    fps = 30;
+//    if (fps == 0)
+//    {
+//        fps = 30;
+//    }
 
     // step1.4: 颜色通道的存储顺序，RGB还是BGR，因为OpenCV内部使用BGR，所以这个顺序很重要
     bRGB = fSettings["Camera.RGB"];  // 不让使用bool型
@@ -75,84 +79,148 @@ void Tracking::track()
     }
 }
 
-void Tracking::PreProcessImage(const cv::Mat &image)
+void Tracking::PreProcessImage(cv::Mat image)
 {
     // step1: 检查输入的图片．如果不是灰度图就转换成灰度图
-    currentImage = image.clone();
-
-    if (currentImage.channels() == 3)
+    if (image.channels() == 3)
     {
         if (bRGB)
         {
-            cv::cvtColor(currentImage, currentImage, CV_RGB2GRAY);
+            cv::cvtColor(image, image, CV_RGB2GRAY);
         }
         else
         {
-            cv::cvtColor(currentImage, currentImage, CV_BGR2GRAY);
+            cv::cvtColor(image, image, CV_BGR2GRAY);
         }
     }
-    else if (currentImage.channels() == 4)
+    else if (image.channels() == 4)
     {
         if (bRGB)
         {
-            cv::cvtColor(currentImage, currentImage, CV_RGBA2GRAY);
+            cv::cvtColor(image, image, CV_RGBA2GRAY);
         }
         else
         {
-            cv::cvtColor(currentImage, currentImage, CV_BGRA2GRAY);
+            cv::cvtColor(image, image, CV_BGRA2GRAY);
         }
     }
 
     // step2: 如果是初始化则需要提取2000个关键点，如果是后续的追踪过程则只提取1000个就行
     if ( trackingState == NO_IMAGE_YET || trackingState == NOT_INITIALIZED)
     {
-        currentFrame = Frame(currentImage, iniOrbExtractor, K, distortCoef);
+        currentFrame = Frame(image, iniOrbExtractor, K, distortCoef);
     }
     else
     {
-        currentFrame = Frame(currentImage, OrbExtractor, K, distortCoef);
+        currentFrame = Frame(image, OrbExtractor, K, distortCoef);
     }
 
 }
 
 Eigen::Matrix4d Tracking::Run(const cv::Mat &image)
 {
-    // 图像预处理，把输入的图片提取完特征点并保存成Frame对象
+    // Step1: 图像预处理，把输入的图片提取完特征点并保存成Frame对象
     PreProcessImage(image);
 
-    // tracking流程的主函数，追踪该帧的位置并建图
+    // Step2: tracking流程的主函数，追踪该帧的位置并建图
     track();
 }
 
 void Tracking::MonoInitialize()
 {
-    Initializer initializer;
-
     // Step0: 检查当前帧上keypoint的数目，如果只能提出不到100个关键点，那么这一帧肯定不能用来做初始化，无论是做第一帧还是做第二帧都不行
     if (currentFrame.numKeypoints < 100)
     {
         initializer.bIniFrameCreated = false;  // 因为初始化要求必须是连续的两帧，所以第二帧不行，第一帧能提再多的keypoint也作废
+        initializer.frameCount = 0;
         return;
     }
 
     // Step1: 生成初始帧，条件比较宽松，只要能提到100个关键点就能做初始帧
-    if (!initializer.bIniFrameCreated)
+    if (!initializer.frameCount)
     {
-//        std::vector<Eigen::Vector2f> keypoints1;
-//        keypoints1.reserve(currentFrame.numKeypoints);
-//
-//        for (const cv::KeyPoint &kpt: currentFrame.keypoints)
-//        {
-//            Eigen::Vector2f pt(kpt.pt.x, kpt.pt.y);
-//            keypoints1.push_back(pt);
-//        }
-        initializer.keypoints1 = currentFrame.keypoints;
-        initializer.bIniFrameCreated = true;
+        initializer.initialFrame = currentFrame;
+        initializer.frameCount++;
 
         return;
     }
 
     // Step2: 生成第二帧，必须要是初始帧的下一帧，而且能和初始帧找到100个匹配点，否则重新开始初始化过程
+//    if (++initializer.frameCount < 3)  // 隔一帧再与初始帧匹配，保证视差大一点
+//    {
+//        return;
+//    }
     ORBmatcher OrbMatcher(0.9, true);
+    std::map<int, int> matches;
+    int nMatches = OrbMatcher.FindMatchingPoints(initializer.initialFrame, currentFrame, 100, matches);
 
+    if (nMatches < 100)  // 找不到足够的匹配点就重新开始初始化
+    {
+        initializer.frameCount = 0;
+
+        return;
+    }
+    else
+    {
+        initializer.currentFrame = currentFrame;
+        cout << "Initialization beginning..." << endl;
+    }
+
+    cv::Mat image1 = initializer.initialFrame.image;
+    cv::Mat image2 = initializer.currentFrame.image;
+
+    {
+        int cols1 = image1.cols;
+        int cols2 = image2.cols;
+        int rows1 = image1.rows;
+        int rows2 = image2.rows;
+
+        int rows3 = rows1 + rows2 + 20;
+        cv::Mat image3(rows3, cols1, image1.type());
+        uchar *ptr1 = image1.data;
+        uchar* ptr2 = image2.data;
+        uchar* ptr3 = image3.data;
+        int step03 = image3.step[0];
+        int step13 = image3.step[1];
+        int step01 = image1.step[0];
+        int step11 = image1.step[1];
+        int channel = image3.channels();
+        int elemSize1 = image3.elemSize1();
+
+        for (int i = 0; i < image1.rows; ++i)
+        {
+            for (int j = 0; j < image1.cols; ++j)
+            {
+                for (int k = 0; k < channel; ++k)
+                {
+                    *(ptr3 + i*step03 + j*step13 + k*elemSize1) = *(ptr1 + i*step01 + j*step11 + k*elemSize1);
+                    *(ptr3 + (i+rows1+20)*step03 + j*step13 + k*elemSize1) = *(ptr2 + i*step01 + j*step11 + k*elemSize1);
+                }
+            }
+        }
+
+        for (const auto &match: matches)
+        {
+            cv::KeyPoint kpt1 = initializer.initialFrame.keypoints[match.first];
+            cv::KeyPoint kpt2 = initializer.currentFrame.keypoints[match.second];
+            kpt2.pt.y += rows1+20;
+
+            uchar b = rand();uchar g = rand(); uchar r = rand();
+            cv::circle(image3, kpt1.pt, 2, cv::Scalar(b,g,r));
+            cv::circle(image3, kpt2.pt, 2, cv::Scalar(b,g,r));
+            cv::line(image3, kpt1.pt, kpt2.pt, cv::Scalar(b,g,r));
+        }
+
+
+//        cv::imshow("image3", image3);
+//        cv::waitKey();
+    }
+
+
+    // Step3: 初始化流程开始，首先根据匹配点对计算当前帧相对与初始帧的pose
+    Eigen::Matrix3d R;
+    Eigen::Vector3d t;
+    std::vector<Eigen::Vector3d> vMapPoints;
+    initializer.ComputeRelativePose(matches, R, t, vMapPoints);
+    initializer = Initializer();
 }

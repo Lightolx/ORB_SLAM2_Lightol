@@ -22,12 +22,12 @@ public:
                                                   Eigen::Matrix<unsigned char, Eigen::Dynamic, 32> descriptors2);
 
     // 找寻两幅图中的匹配点对并保存在matches中，first与second分别表示匹配的一对keypoint1与keypoint2在image1与image2中的id
-    static int FindMatchingPoints(const Frame &image1, const Frame &image2, int windowSize,
-                           std::map<int, int> &matches);
+    int FindMatchingPoints(const Frame &image1, const Frame &image2, int windowSize,
+                           std::map<int, int> &matches) const;
 private:
     float NNratio;
     bool bCheckOrientation;
-    static const int TH_HAMMING_DIST = 30;
+    static const int TH_HAMMING_DIST = 10;
 };
 
 

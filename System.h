@@ -20,13 +20,13 @@ class System
 public:
 
     System(const std::string &vocFilepath, const std::string &camSetFilepath);
-
+    Eigen::Matrix4d TrackMonocular(const cv::Mat& image) const;
 
 private:
     ORB_Vocalbulary* vocabulary_;
     Tracking* pTracker;
 
-    Eigen::Matrix4d TrackMonocular(const cv::Mat& image) const;
+
 };
 
 #endif //ORB_SLAM2_LIGHTOL_SYSTEM_H

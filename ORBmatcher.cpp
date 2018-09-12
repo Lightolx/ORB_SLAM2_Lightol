@@ -58,7 +58,7 @@ std::vector<int> ORBmatcher::MatchDescriptors(Eigen::Matrix<unsigned char, Eigen
 }
 
 int ORBmatcher::FindMatchingPoints(const Frame &image1, const Frame &image2, int windowSize,
-                                   std::map<int, int> &matches)
+                                   std::map<int, int> &matches) const
 {
     std::vector<int> matches21(image2.numKeypoints, 256);  //　用于记录image2中各个keypoint与image1的距离
 
@@ -100,8 +100,7 @@ int ORBmatcher::FindMatchingPoints(const Frame &image1, const Frame &image2, int
         if (minDist < TH_HAMMING_DIST)
         {
             // step3.2: 最小的距离要足够优秀，木秀于林，一堆大的就它一个小，那么它就很可能就是唯一那个正确的匹配，而不是矮子里面拔将军选出来的平平无奇的一个
-//            if (minDist < NNratio*minDist2)
-            if (minDist < 0.6*minDist2)
+            if (minDist < NNratio*minDist2)
             {
                 // 如果ID为minID的keypoint2已经和以前的一个keypoint1匹配上了，那么就看两者的ORB距离了，如果现在的这个距离比以前的小，那么可以认定现在的匹配更准确，否则认为原来的更准确，现在这个点没办法正确匹配了
                 if (dist < matches21[minID])

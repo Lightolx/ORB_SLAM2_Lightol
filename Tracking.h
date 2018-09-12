@@ -10,6 +10,7 @@
 #include <opencv2/core/core.hpp>
 #include "ORBextractor.h"
 #include "Frame.h"
+#include "Initializer.h"
 
 class Tracking
 {
@@ -33,11 +34,12 @@ public:
     ORBextractor iniOrbExtractor;
 
     // 把输入的图片转换为Frame对象，完成提取keypoint以及计算ORB特征等工作
-    void PreProcessImage(const cv::Mat &image);
+    void PreProcessImage(cv::Mat image);
     void track();
 
-    cv::Mat currentImage;
-    Frame currentFrame;
+    Frame currentFrame; // 这个Frame用指针应该要好点，毕竟一个Frame对象包含了很多成员
+
+    Initializer initializer;
 
 private:
     cv::Mat K;

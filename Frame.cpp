@@ -26,7 +26,7 @@ float Frame::maxBorderX = 0.0;
 float Frame::maxBorderY = 0.0;
 
 Frame::Frame(const cv::Mat &_image, const ORBextractor &_OrbExtractor, const cv::Mat &_K, const cv::Mat &_distCoef):
-        OrbExtractor(_OrbExtractor), K(_K), distCoef(_distCoef)
+        OrbExtractor(_OrbExtractor), K(_K), distCoef(_distCoef), image(_image)
 {
     // Step1: 每新建一帧Frame，总的Frame数量加一，同时给这个Frame赋id
     id = numFrame++;
@@ -79,7 +79,7 @@ void Frame::UndistortKeypints()
     }
 
     // step1.2: 调用cv::undistortPoints()函数，专门校准一个点而不是校准整张图像
-    pts.reshape(2);         // 为undistortPoints()函数做准备
+    pts = pts.reshape(2);         // 为undistortPoints()函数做准备
     cv::undistortPoints(pts, pts, K, distCoef, cv::Mat(), K);
     pts.reshape(1);         //　还原
 
@@ -100,13 +100,13 @@ void Frame::ConstructGrid(const cv::Mat &image)
     if (distCoef.at<float>(0,0) != 0.0)
     {
         // 把4个角点去畸变，认定它们四个也是去畸变后的图像的角点
-        cv::Mat pts(4,2,CV_32F);
+        cv::Mat pts(4,2,CV_32FC1);
         pts.at<float>(0,0) = 0;             pts.at<float>(0,1) = 0;
         pts.at<float>(1,0) = image.cols;    pts.at<float>(1,1) = 0;
         pts.at<float>(2,0) = 0;             pts.at<float>(2,1) = image.rows;
         pts.at<float>(3,0) = image.cols;    pts.at<float>(3,1) = image.rows;
 
-        pts.reshape(2);
+        pts = pts.reshape(2);
         cv::undistortPoints(pts, pts, K, distCoef, cv::Mat(), K);
         pts.reshape(1);
 
@@ -200,4 +200,13 @@ std::vector<int> Frame::GetKptsInArea(Eigen::Vector2f p, float r) const
     }
 
     return kptIDs;
+}
+
+Frame::Frame(const Frame &Frame1):
+    id(Frame1.id), K(Frame1.K), distCoef(Frame1.distCoef), grid(Frame1.grid), OrbExtractor(Frame1.OrbExtractor),
+    rawKeypoints(Frame1.rawKeypoints), keypoints(Frame1.keypoints), descriptors(Frame1.descriptors),
+    vMapPoints(Frame1.vMapPoints), numKeypoints(Frame1.numKeypoints), Tcw(Frame1.Tcw), Twc(Frame1.Twc),
+    R(Frame1.R), t(Frame1.t), Oc(Frame1.Oc)
+{
+
 }

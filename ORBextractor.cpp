@@ -879,7 +879,6 @@ Eigen::Matrix<uchar, 1, 32> ORBextractor::ComputeOrbDescriptor(const cv::KeyPoin
 void ORBextractor::operator()(cv::InputArray _image, std::vector<cv::KeyPoint>& keypoints, Eigen::Matrix<uchar, Eigen::Dynamic, 32> &descriptors)
 {
     cv::Mat image = _image.getMat();
-    cv::cvtColor(image, image, cv::COLOR_BGR2GRAY);
     assert(image.type() == CV_8UC1);  //　后面算BRIEF提取像素值的时候那么随意，就是因为输入的是最简单的CV_8UC1
 
     // Step1: 建立图像金字塔，按照0.8的系数依次resize出来8层

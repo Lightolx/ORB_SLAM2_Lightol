@@ -18,6 +18,8 @@ class Frame
 {
 public:
     Frame() {}
+
+    Frame(const Frame &Frame1);
     // Constructor for Monocular cameras
     Frame(const cv::Mat &image, const ORBextractor &OrbExtractor, const cv::Mat &K, const cv::Mat &distCoef);
 
@@ -43,7 +45,7 @@ public:
 
     std::vector<std::vector<std::vector<int>>> grid;  // 二维数组的每一个元素包含了在这个网格内的keypoint的id序列，注意是先cols再rows
 
-//    cv::Mat image;　　　　　　　　　　图像都不用存，因为要用到它灰度的地方就是提特征点，在后面的slam过程中用不到它
+    cv::Mat image;  //图像都不用存，因为要用到它灰度的地方就是提特征点，在后面的slam过程中用不到它
     ORBextractor OrbExtractor;
 
     std::vector<cv::KeyPoint> rawKeypoints;   // 这个Frame上提取出来的keypoint的集合，其坐标还没经过去畸变
